@@ -1,0 +1,8 @@
+enclave {
+
+    trusted {
+        public void ecall_store_string([in, string] char *str);
+        public void ecall_get_string([in, out, string] char *buf);
+    };
+
+};

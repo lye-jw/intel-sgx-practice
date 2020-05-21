@@ -1,0 +1,14 @@
+enclave {
+    
+    from "TrustedLibrary/Operations.edl" import *;
+
+    trusted {
+        public void ecall_print_string(void);
+    };
+
+    untrusted {
+        /* String passed from enclave to app function */
+        void ocall_print_string([in, string] const char *str);
+    };
+
+};

@@ -8,3 +8,10 @@
 /helloworld_from_enclave/App/Enclave_u.h
 /helloworld_from_enclave/Enclave/Enclave_t.c
 /helloworld_from_enclave/Enclave/Enclave_t.h
+
+# store_retrieve_string post-compile files
+/store_retrieve_string/app
+/store_retrieve_string/App/Enclave_u.c
+/store_retrieve_string/App/Enclave_u.h
+/store_retrieve_string/Enclave/Enclave_t.c
+/store_retrieve_string/Enclave/Enclave_t.h
