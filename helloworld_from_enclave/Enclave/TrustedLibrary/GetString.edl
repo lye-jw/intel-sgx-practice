@@ -1,0 +1,7 @@
+enclave {
+
+    trusted {
+        public void ecall_get_string(void);
+    };
+
+};
