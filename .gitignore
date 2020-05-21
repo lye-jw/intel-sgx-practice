@@ -1,0 +1,10 @@
+.config_SIM_DEBUG_x64
+*.o
+*.so
+
+# helloworld_from_enclave post-compile files
+/helloworld_from_enclave/app
+/helloworld_from_enclave/App/Enclave_u.c
+/helloworld_from_enclave/App/Enclave_u.h
+/helloworld_from_enclave/Enclave/Enclave_t.c
+/helloworld_from_enclave/Enclave/Enclave_t.h
