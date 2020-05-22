@@ -161,8 +161,7 @@ int SGX_CDECL main(int argc, char *argv[])
     char retrieved_string[256];
     memset(retrieved_string, '0', 256);
     ecall_retrieve_string(retrieved_string);  /* Untrusted wrapper that calls ecall_get_string() */
-    cout << endl;
-    // cout << retrieved_string << "\n" << endl;
+    cout << retrieved_string << "\n" << endl;
 
     cout << "Enclave prints stored string:" << endl;
     ecall_print_string(global_eid);   /* A direct ECALL */
