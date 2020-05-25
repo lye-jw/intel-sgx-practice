@@ -1,0 +1,13 @@
+enclave {
+    from "sgx_tstdc.edl" import *;
+
+    trusted {
+        public uint32_t get_sealed_data_size([in, string] const char *plaintext);
+        public sgx_status_t ecall_seal_data([in, size=data_size] const char *plaintext, [out, size=data_size] uint8_t *sealed_blob, uint32_t data_size);
+    };
+
+    untrusted {
+        void ocall_print_string([in, string] const char *str);
+    };
+
+};
