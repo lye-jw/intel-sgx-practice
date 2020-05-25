@@ -173,7 +173,7 @@ static bool seal_and_save_data(const char *plaintext)
 static bool read_and_unseal_data()
 {
     sgx_enclave_id_t eid_unseal = 0;
-    uint8_t decrypted_data[256];
+    uint8_t decrypted_data[get_file_size(input_file)];
 
     // Load the enclave for unsealing
     sgx_status_t ret = initialize_enclave(ENCLAVE_NAME_UNSEAL, &eid_unseal);
@@ -224,8 +224,9 @@ static bool read_and_unseal_data()
         return false;
     }
 
-    // decrypted_data[] = '\0';
-    std::cout << "Unsealed data: " << decrypted_data << "   " << strlen((const char *) decrypted_data) << std::endl;
+    decrypted_data[get_file_size(input_file)] = '\0';    /* strlen > sizeof for some reason */
+    std::cout << "Unsealed data: " << decrypted_data;
+
     free(temp_buf);
     sgx_destroy_enclave(eid_unseal);
 
@@ -240,10 +241,12 @@ int main(int argc, char* argv[])
     std::cout << "Enter file for operation:" << std::endl;
     std::cin >> input_file;
 
-    char plaintext[get_file_size(input_file) + 1];
-
+    char plaintext[get_file_size(input_file)];
     std::fstream plain_file(input_file);
     plain_file.read(plaintext, get_file_size(input_file));
+    plaintext[get_file_size(input_file)] = '\0';    /* strlen(plaintext) > sizeof(plaintext) for some reason */
+
+    std::cout << "Original plaintext: " << plaintext;
 
     // Enclave_Seal: seal the secret and save the data blob to a file
     if (seal_and_save_data(plaintext) == false)
