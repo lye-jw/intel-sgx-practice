@@ -1,0 +1,7 @@
+- Socket set up, send/receive and destruction defined in msgio.h and msgio.cpp as MsgIO object functions
+
+- Client-side attestation operations and calling of MsgIO socket functions in client.cpp
+
+- Service Provider server-side attestation and socket function calls in sp.cpp
+
+- Enclave-related RA initialization and getting/hashing key functions in Enclave.cpp
