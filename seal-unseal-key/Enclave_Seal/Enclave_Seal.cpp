@@ -27,7 +27,7 @@ sgx_status_t ecall_seal_aes_key(uint8_t *sealed_blob, uint32_t data_size) {
 	sgx_aes_gcm_128bit_key_t aes_key = { 0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0xa, 0xb, 0xc, 0xd, 0xe, 0xf };
     char aes_key_str_arr[16][2];
     for (int i = 0; i < sizeof(aes_key); i++) {
-        snprintf(aes_key_str_arr[i], sizeof(unsigned char) * 2, "%X", aes_key[i]);    /* Account for null termination */
+        snprintf(aes_key_str_arr[i], sizeof(unsigned char) * 2, "%x", aes_key[i]);    /* Account for null termination */
         // ocall_print_string(aes_key_str_arr[i]);
     }
 
