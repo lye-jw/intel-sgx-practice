@@ -29,6 +29,9 @@ in the License.
 #include "sgx_trts.h"
 #include "sgx_tseal.h"
 
+uint8_t enclave_secret[8];
+sgx_sha256_hash_t aad_mac_text;
+
 static const sgx_ec256_public_t def_service_public_key = {
     {
         0x72, 0x12, 0x8a, 0x7a, 0x17, 0x52, 0x6e, 0xbf,
@@ -202,33 +205,88 @@ sgx_status_t enclave_ra_close(sgx_ra_context_t ctx)
         return ret;
 }
 
-sgx_status_t enclave_seal_key(sgx_ra_context_t ctx, sgx_ra_key_type_t key_type,
-    uint8_t *sealed_blob, uint32_t data_size)
+sgx_status_t enclave_put_secret_data(
+    sgx_ra_context_t context,
+    uint8_t *p_secret,
+    uint32_t secret_size)
 {
-    sgx_ra_key_128_t key;
+    sgx_status_t ret = SGX_SUCCESS;
+    sgx_ec_key_128bit_t sk_key;
+
+    do {
+        if (secret_size != 8)
+        {
+            ret = SGX_ERROR_INVALID_PARAMETER;
+            break;
+        }
+
+        ret = sgx_ra_get_keys(context, SGX_RA_KEY_SK, &sk_key);
+        if (SGX_SUCCESS != ret)
+        {
+            break;
+        }
+
+		for (int i = 0; i < sizeof(enclave_secret); i++) {
+			enclave_secret[i] = p_secret[i];
+		}
+        // uint8_t aes_gcm_iv[12] = {0};
+        // ret = sgx_rijndael128GCM_decrypt(&sk_key,
+        //                                  p_secret,
+        //                                  secret_size,
+        //                                  &enclave_secret[0],
+        //                                  &aes_gcm_iv[0],
+        //                                  12,
+        //                                  NULL,
+        //                                  0,
+        //                                  NULL);
+
+		// To check if secret provisioned & encrypted+decrypted correctly
+        uint32_t i;
+        bool secret_match = true;
+        for(i=0; i < secret_size; i++)
+        {
+            if(enclave_secret[i] != i)
+            {
+                secret_match = false;
+            }
+        }
+
+        if(!secret_match)
+        {
+            ret = SGX_ERROR_UNEXPECTED;
+        }
+    } while(0);
+
+    return ret;
+}
+
+uint32_t get_sealed_data_size(uint32_t ori_data_len) {
+    return sgx_calc_sealed_data_size(sizeof(aad_mac_text), ori_data_len);
+}
+
+sgx_status_t enclave_seal_secret(uint8_t *sealed_blob, uint32_t data_size)
+{
     sgx_status_t ret;
-    sgx_sha256_hash_t add_mac_text;
-    uint8_t sealed_data_size;
+    uint32_t sealed_data_size;
 
-    ret = sgx_ra_get_keys(ctx, key_type, &key);
+    /* Store SHA256 hash of message as aad_mac_text */
+    ret = sgx_sha256_msg((const uint8_t *) enclave_secret, sizeof(enclave_secret), &aad_mac_text);
     if (ret != SGX_SUCCESS) return ret;
 
-    ret = enclave_ra_get_key_hash(&ret, ctx, key_type, &add_mac_text);
-    if (ret != SGX_SUCCESS) return ret;
-
-    sealed_data_size = sgx_calc_sealed_data_size((uint32_t) sizeof(add_mac_text),
-                        (uint32_t) sizeof(key));
+    sealed_data_size = get_sealed_data_size((uint32_t) sizeof(enclave_secret));
     if (sealed_data_size == UINT32_MAX)
         return SGX_ERROR_UNEXPECTED;
     if (sealed_data_size > data_size)
         return SGX_ERROR_INVALID_PARAMETER;
 
-    ret = sgx_seal_data((uint32_t) sizeof(add_mac_text), (const uint8_t *) add_mac_text,
-                        (uint32_t) sizeof(key), (uint8_t *) key, sealed_data_size,
+    ret = sgx_seal_data((uint32_t) sizeof(aad_mac_text), (const uint8_t *) aad_mac_text,
+                        (uint32_t) sizeof(enclave_secret), (uint8_t *) enclave_secret, sealed_data_size,
                         (sgx_sealed_data_t *) sealed_blob);
+
+    return ret;
 }
 
-sgx_status_t enclave_unseal_key(uint8_t *decrypted_data, const uint8_t *sealed_blob, size_t data_size)
+sgx_status_t enclave_unseal_secret(uint8_t *decrypted_data, const uint8_t *sealed_blob, size_t data_size)
 {
     uint32_t mac_text_len;
     uint32_t decrypt_data_len;

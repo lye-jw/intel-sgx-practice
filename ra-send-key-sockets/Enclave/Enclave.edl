@@ -52,11 +52,15 @@ enclave {
 
 		public sgx_status_t enclave_ra_close(sgx_ra_context_t ctx);
 
-		public sgx_status_t enclave_seal_key(sgx_ra_context_t ctx,
-			sgx_ra_key_type_t key_type, [out, size=data_size] uint8_t *sealed_blob,
+        public sgx_status_t enclave_put_secret_data(sgx_ra_context_t context,
+                                            [in, size=secret_size] uint8_t* p_secret,
+                                            uint32_t secret_size);
+
+		public uint32_t get_sealed_data_size(uint32_t ori_data_len);
+		public sgx_status_t enclave_seal_secret([out, size=data_size] uint8_t *sealed_blob,
 			uint32_t data_size);
 
-		public sgx_status_t enclave_unseal_key([in, out, size=data_size] uint8_t *decrypted_data,
+		public sgx_status_t enclave_unseal_secret([in, out, size=data_size] uint8_t *decrypted_data,
 			[in, size=data_size] const uint8_t *sealed_blob, size_t data_size);
 
 	};

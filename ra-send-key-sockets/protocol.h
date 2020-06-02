@@ -45,7 +45,21 @@ typedef enum {
 typedef struct _ra_msg4_struct {
 	attestation_status_t status;
 	sgx_platform_info_t platformInfoBlob;
+    // sp_aes_gcm_data_t secret;
+	uint32_t body_size;
+	uint8_t body[8];
 } ra_msg4_t;
+
+// typedef struct sp_aes_gcm_data_t {
+//     uint32_t        payload_size;       /*  0: Size of the payload which is*/
+//                                         /*     encrypted*/
+//     uint8_t         reserved[12];       /*  4: Reserved bits*/
+//     uint8_t         payload_tag[SAMPLE_SP_TAG_SIZE];
+//                                         /* 16: AES-GMAC of the plain text,*/
+//                                         /*     payload, and the sizes*/
+//     uint8_t         payload[];          /* 32: Ciphertext of the payload*/
+//                                         /*     followed by the plain text*/
+// } sp_aes_gcm_data_t;
 
 #endif
 

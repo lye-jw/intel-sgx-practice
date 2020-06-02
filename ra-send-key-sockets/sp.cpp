@@ -53,6 +53,10 @@ in the License.
 #include "settings.h"
 #include "enclave_verify.h"
 
+#include <openssl/conf.h>
+#include <openssl/evp.h>
+#include <openssl/err.h>
+
 using namespace json;
 using namespace std;
 
@@ -64,6 +68,8 @@ using namespace std;
 #ifdef _WIN32
 #define strdup(x) _strdup(x)
 #endif
+
+uint8_t prov_secret[] = {0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7};
 
 static const unsigned char def_service_private_key[32] = {
 	0x90, 0xe7, 0x6c, 0xbb, 0x2d, 0x52, 0xa1, 0xce,
@@ -126,6 +132,8 @@ int get_attestation_report(IAS_Connection *ias, int version,
 	int strict_trust);
 
 int get_proxy(char **server, unsigned int *port, const char *url);
+
+
 
 char debug = 0;
 char verbose = 0;
@@ -962,15 +970,25 @@ int process_msg3 (MsgIO *msgio, IAS_Connection *ias, sgx_ra_msg1_t *msg1,
 
 		edividerWithText("Copy/Paste Msg4 Below to Client"); 
 
+		/* Encrypt secret with AES-GCM & connection SK to be part of message body */
+		// uint8_t iv[12] = {0};
+		// AES128GCM_encrypt(prov_secret, sizeof(prov_secret), key, iv, msg4->body);
+		for (int i = 0; i < sizeof(prov_secret); i++) {
+			msg4->body[i] = prov_secret[i];
+		}
+		msg4->body_size = sizeof(msg4->body);
+
 		/* Serialize the members of the Msg4 structure independently */
 		/* vs. the entire structure as one send_msg() */
 
 		msgio->send_partial(&msg4->status, sizeof(msg4->status));
-		msgio->send(&msg4->platformInfoBlob, sizeof(msg4->platformInfoBlob));
+		msgio->send_partial(&msg4->platformInfoBlob, sizeof(msg4->platformInfoBlob));
+		msgio->send(&msg4->body, sizeof(&msg4->body));
 
 		fsend_msg_partial(fplog, &msg4->status, sizeof(msg4->status));
-		fsend_msg(fplog, &msg4->platformInfoBlob,
+		fsend_msg_partial(fplog, &msg4->platformInfoBlob,
 			sizeof(msg4->platformInfoBlob));
+		fsend_msg(fplog, &msg4->body, sizeof(&msg4->body));
 		edivider();
 
 		/*
@@ -1607,6 +1625,62 @@ int get_proxy(char **server, unsigned int *port, const char *url)
 
 	return 1;
 }
+
+// /*
+//  * Encryption steps:
+//  * 1. Set up context.
+//  * 2. Initialise encryption operation.
+//  * 3. Provide plaintext bytes to be encrypted.
+//  * 4. Finalise encryption operation.
+//  */
+// int AES128GCM_encrypt(unsigned char *plaintext, int plaintext_len, unsigned char *key,
+//             unsigned char *iv, unsigned char *ciphertext)
+// {
+//     EVP_CIPHER_CTX *ctx;
+
+//     int len;
+
+//     int ciphertext_len;
+
+//     /* Create and initialise the context */
+//     if(!(ctx = EVP_CIPHER_CTX_new()))
+//         return 1;
+
+//     /*
+//      * Initialise the encryption operation with 128 bits AES cipher type
+//      * IV size = block size, for AES 64 bits
+//      */
+//     if(1 != EVP_EncryptInit_ex(ctx, EVP_aes_128_gcm(), NULL, key, iv))
+//         return -1;
+
+//     /*
+//      * Provide the message to be encrypted (in = plaintext),
+//      * and obtain the encrypted output (out = ciphertext).
+//      * length of out, outl stored in len.
+//      * EVP_EncryptUpdate can be called multiple times if necessary
+//      */
+//     if(EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, plaintext_len) != 1) {
+//         return -1;
+//     }
+//     ciphertext_len = len;
+
+//     /*
+//      * Finalise the encryption. Further ciphertext bytes may be written at
+//      * this stage.
+//      */
+//     // EVP_EncryptFinal_ex() encrypts any data that remains in a partial block
+//     // and stores it to out (ciphertext + len in this case).
+//     if(EVP_EncryptFinal_ex(ctx, ciphertext + len, &len) != 1) {
+//         return -1;
+//     }
+//     ciphertext_len += len;
+
+//     /* Clean up */
+//     EVP_CIPHER_CTX_free(ctx);
+
+//     return ciphertext_len;
+// }
+
 
 #ifndef _WIN32
 

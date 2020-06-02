@@ -66,6 +66,7 @@ using namespace std;
 #include "quote_size.h"
 
 #define MAX_LEN 80
+#define SEALED_DATA_FILE "Sealed_data.txt"
 
 #ifdef _WIN32
 # define strdup(x) _strdup(x)
@@ -103,7 +104,14 @@ sgx_status_t sgx_create_enclave_search (
 
 void usage();
 int do_quote(sgx_enclave_id_t eid, config_t *config);
-int do_attestation(sgx_enclave_id_t eid, config_t *config);
+int do_attestation(sgx_enclave_id_t eid, config_t *config,
+	ra_msg4_t *secret_to_save);
+
+bool write_buf_to_file(const char *filename, const uint8_t *buf,
+	size_t bsize, long offset);
+bool seal_and_save_secret(sgx_enclave_id_t enclave_id, ra_msg4_t *msg);
+bool read_file_to_buf(const char *filename, uint8_t *buf, size_t bsize);
+bool read_and_unseal_secret(sgx_enclave_id_t enclave_id);
 
 char debug= 0;
 char verbose= 0;
@@ -141,6 +149,7 @@ int main (int argc, char *argv[])
 	EVP_PKEY *service_public_key= NULL;
 	char have_spid= 0;
 	char flag_stdio= 0;
+	ra_msg4_t *secret_to_save;
 
 	/* Create a logfile to capture debug output and actual msg data */
 	fplog = create_logfile("client.log");
@@ -414,7 +423,7 @@ int main (int argc, char *argv[])
 	/* Are we attesting, or just spitting out a quote? */
 
 	if ( config.mode == MODE_ATTEST ) {
-		do_attestation(eid, &config);
+		do_attestation(eid, &config, secret_to_save);
 	} else if ( config.mode == MODE_EPID || config.mode == MODE_QUOTE ) {
 		do_quote(eid, &config);
 	} else {
@@ -422,13 +431,16 @@ int main (int argc, char *argv[])
 		return 1;
 	}
 
-     
+	seal_and_save_secret(eid, secret_to_save);
+	read_and_unseal_secret(eid);
+
+	free(secret_to_save);
 	close_logfile(fplog);
 
 	return 0;
 }
 
-int do_attestation (sgx_enclave_id_t eid, config_t *config)
+int do_attestation (sgx_enclave_id_t eid, config_t *config, ra_msg4_t *secret_to_save)
 {
 	sgx_status_t status, sgxrv, pse_status;
 	sgx_ra_msg1_t msg1;
@@ -818,7 +830,8 @@ int do_attestation (sgx_enclave_id_t eid, config_t *config)
 	}
 
 	/*
-	 * If the enclave is trusted, fetch a hash of the the MK and SK from
+	 * If the enclave is trusted, store the provisioned secret then
+	 * fetch a hash of the the MK and SK from
 	 * the enclave to show proof of a shared secret with the service 
 	 * provider.
 	 */
@@ -826,6 +839,8 @@ int do_attestation (sgx_enclave_id_t eid, config_t *config)
 	if ( enclaveTrusted == Trusted ) {
 		sgx_status_t key_status, sha_status;
 		sgx_sha256_hash_t mkhash, skhash;
+
+		enclave_put_secret_data(eid, &status, ra_ctx, msg4->body, msg4->body_size);
 
 		// First the MK
 
@@ -857,7 +872,8 @@ int do_attestation (sgx_enclave_id_t eid, config_t *config)
 		}
 	}
 
-	free (msg4);
+	secret_to_save = msg4;
+	// free (msg4);
 
 	enclave_ra_close(eid, &sgxrv, ra_ctx);
 	delete msgio;
@@ -1170,6 +1186,161 @@ int file_in_searchpath (const char *file, const char *search, char *fullpath,
 }
 
 #endif
+
+bool write_buf_to_file(const char *filename, const uint8_t *buf, size_t bsize, long offset)
+{
+    if (filename == NULL || buf == NULL || bsize == 0)
+        return false;
+
+    FILE *fp = fopen(filename, "w");
+    if (fp == NULL) {
+        printf("\nFailed to open the file \"%s\"", filename);
+        return false;
+    }
+
+    fseek(fp, offset, SEEK_SET);
+    size_t written = fwrite(buf, sizeof(uint8_t), bsize, fp);
+    if (written == 0) {
+        printf("\nFailed to write to the file \"%s\"", filename);
+        return false;
+    }
+
+    fclose(fp);
+
+    return true;
+}
+
+bool seal_and_save_secret(sgx_enclave_id_t enclave_id, ra_msg4_t *msg) {
+    FILE* OUTPUT = stdout;
+    uint32_t sealed_data_size = 0;
+    sgx_status_t ret;
+
+    ret = get_sealed_data_size(enclave_id, &sealed_data_size,
+            msg->body_size);
+    if (ret != SGX_SUCCESS || sealed_data_size == UINT32_MAX) {
+        fprintf(OUTPUT, "\n\nFailed to get sealed data size!");
+        return false;
+    }
+
+    // Create temporary buffer for sealed data
+    uint8_t *temp_sealed_buf = (uint8_t *) malloc(sealed_data_size);
+    if (temp_sealed_buf == NULL)
+    {
+        fprintf(OUTPUT, "\n\nFailed to initialize sealed buffer!");
+        free(temp_sealed_buf);
+        return false;
+    }
+
+    // Seal secret
+    sgx_status_t retval;
+    ret = enclave_seal_secret(enclave_id, &retval, temp_sealed_buf, sealed_data_size);
+    if (ret != SGX_SUCCESS || retval != SGX_SUCCESS)
+    {
+        fprintf(OUTPUT, "\n\nFailed to seal secret!");
+        free(temp_sealed_buf);
+        return false;
+    }
+
+    // Save the sealed blob
+    if (write_buf_to_file(SEALED_DATA_FILE, temp_sealed_buf, sealed_data_size, 0) == false)
+    {
+        fprintf(OUTPUT, "\n\nFailed to save the sealed data blob to \"%s\"", SEALED_DATA_FILE);
+        free(temp_sealed_buf);
+        return false;
+    }
+
+    fprintf(OUTPUT, "\n\nSealing data succeeded.");
+    fprintf(OUTPUT, "\nSealed as: %s\n", temp_sealed_buf);
+
+    free(temp_sealed_buf);
+    return true;
+}
+
+bool read_file_to_buf(const char *filename, uint8_t *buf, size_t bsize)
+{
+    if (filename == NULL || buf == NULL || bsize == 0)
+        return false;
+
+    FILE *fp = fopen(filename, "r");
+    if (fp == NULL) {
+        printf("Failed to open the file \"%s\"", filename);
+    }
+
+    size_t rsize = fread(buf, sizeof(uint8_t), bsize, fp);
+    if (rsize == 0) {
+        printf("Failed to read from the file \"%s\"", filename);
+        return false;
+    }
+
+    return true;
+}
+
+void PRINT_BYTE_ARRAY(
+    FILE *file, void *mem, uint32_t len)
+{
+    if(!mem || !len)
+    {
+        fprintf(file, "\n( null )\n");
+        return;
+    }
+    uint8_t *array = (uint8_t *)mem;
+    fprintf(file, "%u bytes:\n{\n", len);
+    uint32_t i = 0;
+    for(i = 0; i < len - 1; i++)
+    {
+        fprintf(file, "0x%x, ", array[i]);
+        if(i % 8 == 7) fprintf(file, "\n");
+    }
+    fprintf(file, "0x%x ", array[i]);
+    fprintf(file, "\n}\n");
+}
+
+bool read_and_unseal_secret(sgx_enclave_id_t enclave_id)
+{
+    FILE* OUTPUT = stdout;
+    FILE *fp;
+    uint8_t decrypted_data[8];
+    sgx_status_t ret;
+    
+    // Get sealed file size
+    fp = fopen(SEALED_DATA_FILE, "r");
+    fseek(fp, 0L, SEEK_END);
+    long int fsize = ftell(fp);
+    if (fsize == -1L) {
+        fprintf(OUTPUT, "\n\nFailed to get the file size of \"%s\"", SEALED_DATA_FILE);
+        return false;
+    }
+
+    // Read the sealed blob from the file
+    uint8_t *temp_buf = (uint8_t *) malloc(fsize);
+    if(temp_buf == NULL)
+    {
+        fprintf(OUTPUT, "\nOut of memory");
+        return false;
+    }
+    if (read_file_to_buf(SEALED_DATA_FILE, temp_buf, fsize) == false)
+    {
+        fprintf(OUTPUT, "\nFailed to read sealed data from \"%s\"", SEALED_DATA_FILE);
+        free(temp_buf);
+        return false;
+    }
+
+    // Unseal the sealed blob
+    sgx_status_t retval;
+    ret = enclave_unseal_secret(enclave_id, &retval, decrypted_data, temp_buf, fsize);
+    if (ret != SGX_SUCCESS || retval != SGX_SUCCESS)
+    {
+        free(temp_buf);
+        return false;
+    }
+
+    fprintf(OUTPUT, "\nUnseal succeeded.");
+    fprintf(OUTPUT, "\nUnsealed plaintext data:\n");
+    PRINT_BYTE_ARRAY(OUTPUT, decrypted_data, sizeof(decrypted_data));
+
+    free(temp_buf);
+    return true;
+}
 
 
 void usage () 

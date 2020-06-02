@@ -69,7 +69,7 @@ static const sgx_ec256_public_t g_sp_pub_key = {
 // size is forced to be 8 bytes. Expected value is
 // 0x01,0x02,0x03,0x04,0x0x5,0x0x6,0x0x7
 uint8_t g_secret[8] = {0};
-sgx_sha256_hash_t add_mac_text;
+sgx_sha256_hash_t aad_mac_text;
 
 
 #ifdef SUPPLIED_KEY_DERIVATION
@@ -384,7 +384,7 @@ sgx_status_t put_secret_data(
 }
 
 uint32_t get_sealed_data_size(uint32_t ori_data_len) {
-    return sgx_calc_sealed_data_size(sizeof(add_mac_text), ori_data_len);
+    return sgx_calc_sealed_data_size(sizeof(aad_mac_text), ori_data_len);
 }
 
 sgx_status_t enclave_seal_secret(uint8_t *sealed_blob, uint32_t data_size)
@@ -392,8 +392,8 @@ sgx_status_t enclave_seal_secret(uint8_t *sealed_blob, uint32_t data_size)
     sgx_status_t ret;
     uint32_t sealed_data_size;
 
-    /* Store SHA256 hash of message as add_mac_text */
-    ret = sgx_sha256_msg((const uint8_t *) g_secret, sizeof(g_secret), &add_mac_text);
+    /* Store SHA256 hash of message as aad_mac_text */
+    ret = sgx_sha256_msg((const uint8_t *) g_secret, sizeof(g_secret), &aad_mac_text);
     if (ret != SGX_SUCCESS) return ret;
 
     sealed_data_size = get_sealed_data_size((uint32_t) sizeof(g_secret));
@@ -402,7 +402,7 @@ sgx_status_t enclave_seal_secret(uint8_t *sealed_blob, uint32_t data_size)
     if (sealed_data_size > data_size)
         return SGX_ERROR_INVALID_PARAMETER;
 
-    ret = sgx_seal_data((uint32_t) sizeof(add_mac_text), (const uint8_t *) add_mac_text,
+    ret = sgx_seal_data((uint32_t) sizeof(aad_mac_text), (const uint8_t *) aad_mac_text,
                         (uint32_t) sizeof(g_secret), (uint8_t *) g_secret, sealed_data_size,
                         (sgx_sealed_data_t *) sealed_blob);
 
